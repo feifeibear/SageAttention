@@ -104,14 +104,13 @@ def _attn_fwd(Q, K, V, Q_scale, K_scale, Out, Lse,
         V_ptrs += BLOCK_N * HEAD_DIM
 
     # Calculate Lse (log sum exp)
-    lse_i = tl.log(l_i)
+    lse_i = tl.math.log2(l_i) + m_i
 
     # Scale the output
     acc = acc / l_i[:, None]
 
     # Store the output
     tl.store(O_block_ptr, acc.to(Out.type.element_ty), mask=(offs_m[:, None] < N_CTX))
-
     # Store Lse
     Lse_ptr = Lse + off_hz * N_CTX + offs_m
     tl.store(Lse_ptr, lse_i, mask=(offs_m < N_CTX))

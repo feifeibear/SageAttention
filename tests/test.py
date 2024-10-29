@@ -10,8 +10,8 @@ from flash_attn.flash_attn_interface import _flash_attn_forward
 def test_sage_vs_flash():
     # Set up test parameters
     batch_size = 1
-    num_heads = 32
-    seq_len = 1024
+    num_heads = 8
+    seq_len = 3816
     head_dim = 64
     
     # current_cuda_device = int(os.environ['LOCAL_RANK'])
@@ -22,34 +22,43 @@ def test_sage_vs_flash():
     
     dtype = torch.float16
     # Generate random input tensors
-    q = torch.randn(batch_size, num_heads, seq_len, head_dim, device='cuda', dtype=dtype)
-    k = torch.randn(batch_size, num_heads, seq_len, head_dim, device='cuda', dtype=dtype)
-    v = torch.randn(batch_size, num_heads, seq_len, head_dim, device='cuda', dtype=dtype)
+    q = torch.randn(batch_size, seq_len, num_heads, head_dim, device='cuda', dtype=dtype)
+    k = torch.randn(batch_size, seq_len, num_heads, head_dim, device='cuda', dtype=dtype)
+    v = torch.randn(batch_size, seq_len, num_heads, head_dim, device='cuda', dtype=dtype)
 
     test_attention(q, k, v, is_causal=False)
 
 def test_attention(q, k, v, is_causal):
 
-    o, lse = sageattn(q, k, v, is_causal=is_causal, ret_lse=True)
+    q_sage = q.transpose(1, 2)  # [B, S, H, D]
+    k_sage = k.transpose(1, 2)
+    v_sage = v.transpose(1, 2)
+    q_scale = 1 / q.shape[-1] ** (-0.5)
+    o, lse = sageattn(q_sage, k_sage, v_sage, is_causal=is_causal, ret_lse=True)
+    o = o.transpose(1, 2)
+    # lse = lse.squeeze(dim=-1).transpose(1, 2)
 
-    q_flash = q.transpose(1, 2)  # [B, S, H, D]
-    k_flash = k.transpose(1, 2)
-    v_flash = v.transpose(1, 2)
     block_out, _, _, _, _, block_lse, _, _ = _flash_attn_forward(
-        q_flash,
-        k_flash,
-        v_flash,
+        q,
+        k,
+        v,
         dropout_p = 0,
-        softmax_scale = q_flash.shape[-1] ** (-0.5),
+        softmax_scale = q.shape[-1] ** (-0.5),
         causal=is_causal,
         window_size=(-1, -1),
         softcap=0.0,
         alibi_slopes=None,
         return_softmax=False,
     )   
-    block_out = block_out.transpose(1, 2)
     print("LSE DIFF:")
-    print(lse - block_lse)
+    print(f"block_lse {block_lse.shape}")
+
+    if lse is not None:
+        print(f"lse {lse.shape}")
+        print("lse:")
+        print(lse)
+        print("block_lse:")
+        print(block_lse)
 
     print("OUT DIFF:")
     print(f"Max absolute difference: {torch.max(torch.abs(o - block_out))}")
