@@ -104,7 +104,7 @@ def _attn_fwd(Q, K, V, Q_scale, K_scale, Out, Lse,
         V_ptrs += BLOCK_N * HEAD_DIM
 
     # Calculate Lse (log sum exp)
-    lse_i = m_i + tl.log(l_i)
+    lse_i = tl.log(l_i)
 
     # Scale the output
     acc = acc / l_i[:, None]
