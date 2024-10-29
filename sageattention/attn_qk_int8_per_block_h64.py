@@ -34,7 +34,10 @@ def _attn_fwd_inner(acc, l_i, m_i, q, q_scale,
         K_ptrs += BLOCK_N * HEAD_DIM
         K_scale_ptr += 1
         V_ptrs += BLOCK_N * HEAD_DIM
-    return acc, l_i, m_i
+    
+    # Calculate Lse (log sum exp)
+    lse_i = tl.math.log2(l_i.to(tl.float32)) + m_i
+    return acc, l_i, lse_i
 
 @triton.jit
 def _attn_fwd(Q, K, V, Q_scale, K_scale, Out, Lse,
@@ -78,14 +81,12 @@ def _attn_fwd(Q, K, V, Q_scale, K_scale, Out, Lse,
     q = tl.load(Q_ptrs, mask=offs_m[:, None] < N_CTX)
     q_scale = tl.load(Q_scale_ptr)
 
-    acc, l_i, m_i = _attn_fwd_inner(acc, l_i, m_i, q, q_scale, K_ptrs, K_scale_ptr, V_ptrs,  
+    acc, l_i, lse_i = _attn_fwd_inner(acc, l_i, m_i, q, q_scale, K_ptrs, K_scale_ptr, V_ptrs,  
                                 start_m,  
                                 BLOCK_M, HEAD_DIM, BLOCK_N,  
                                 4 - STAGE, offs_m, offs_n, N_CTX 
                                 )
 
-    # Calculate Lse (log sum exp)
-    lse_i = tl.math.log2(l_i) + m_i
 
     # Scale the output
     acc = acc / l_i[:, None]
