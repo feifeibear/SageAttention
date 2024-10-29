@@ -34,7 +34,7 @@ def _attn_fwd_inner(acc, l_i, m_i, q, q_scale,
         K_ptrs += BLOCK_N * HEAD_DIM
         K_scale_ptr += 1
         V_ptrs += BLOCK_N * HEAD_DIM
-    return acc, l_i
+    return acc, l_i, m_i
 
 @triton.jit
 def _attn_fwd(Q, K, V, Q_scale, K_scale, Out, Lse,
@@ -78,30 +78,11 @@ def _attn_fwd(Q, K, V, Q_scale, K_scale, Out, Lse,
     q = tl.load(Q_ptrs, mask=offs_m[:, None] < N_CTX)
     q_scale = tl.load(Q_scale_ptr)
 
-    for start_n in range(0, N_CTX, BLOCK_N):
-        start_n = tl.multiple_of(start_n, BLOCK_N)
-        k_mask = offs_n[None, :] < (N_CTX - start_n)
-        k = tl.load(K_ptrs, mask=k_mask)
-        k_scale = tl.load(K_scale_ptr)
-        qk = tl.dot(q, k).to(tl.float32) * q_scale * k_scale
-        m_ij = tl.maximum(m_i, tl.max(qk, 1))
-        qk = qk - m_ij[:, None]
-        p = tl.math.exp2(qk)
-        l_ij = tl.sum(p, 1)
-
-        alpha = tl.math.exp2(m_i - m_ij)
-        l_i = l_i * alpha + l_ij
-
-        acc = acc * alpha[:, None]
-
-        v = tl.load(V_ptrs, mask=offs_n[:, None] < (N_CTX - start_n))
-        p = p.to(tl.float16)
-
-        acc += tl.dot(p, v, out_dtype=tl.float16)
-        m_i = m_ij
-        K_ptrs += BLOCK_N * HEAD_DIM
-        K_scale_ptr += 1
-        V_ptrs += BLOCK_N * HEAD_DIM
+    acc, l_i, m_i = _attn_fwd_inner(acc, l_i, m_i, q, q_scale, K_ptrs, K_scale_ptr, V_ptrs,  
+                                start_m,  
+                                BLOCK_M, HEAD_DIM, BLOCK_N,  
+                                4 - STAGE, offs_m, offs_n, N_CTX 
+                                )
 
     # Calculate Lse (log sum exp)
     lse_i = tl.math.log2(l_i) + m_i
