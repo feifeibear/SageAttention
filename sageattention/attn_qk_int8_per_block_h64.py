@@ -36,7 +36,7 @@ def _attn_fwd_inner(acc, l_i, m_i, q, q_scale,
         V_ptrs += BLOCK_N * HEAD_DIM
     
     # Calculate Lse (log sum exp)
-    lse_i = tl.math.log2(l_i.to(tl.float32)) + m_i
+    lse_i = tl.math.log(l_i.to(tl.float32)) + m_i
     return acc, l_i, lse_i
 
 @triton.jit
