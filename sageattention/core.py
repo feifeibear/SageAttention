@@ -20,7 +20,7 @@ from .attn_qk_int8_per_block_h96_bf16 import forward as attn_h96_false_bf16
 from .attn_qk_int8_per_block_h96_causal_bf16 import forward as attn_h96_true_bf16
 
 
-def sageattn(q, k, v, attn_mask=None, dropout_p=0.0, is_causal=False, scale=None, smooth_k=True):
+def sageattn(q, k, v, attn_mask=None, dropout_p=0.0, is_causal=False, scale=None, smooth_k=True, ret_lse=False):
     dtype = q.dtype
 
     if dtype == torch.float32 or dtype == torch.float16:
@@ -33,6 +33,7 @@ def sageattn(q, k, v, attn_mask=None, dropout_p=0.0, is_causal=False, scale=None
     headdim = q.size(-1)
 
     dtype = q.dtype
+    lse = None
     if dtype == torch.float16:
 
         if headdim==96:
@@ -42,7 +43,7 @@ def sageattn(q, k, v, attn_mask=None, dropout_p=0.0, is_causal=False, scale=None
         
         if is_causal==False:
             if headdim==64:
-                o = attn_h64_false(q_int8, k_int8, v, q_scale, k_scale)
+                o, lse = attn_h64_false(q_int8, k_int8, v, q_scale, k_scale)
 
             if headdim==96:
                 o = attn_h96_false(q_int8, k_int8, v, q_scale, k_scale)
@@ -89,4 +90,7 @@ def sageattn(q, k, v, attn_mask=None, dropout_p=0.0, is_causal=False, scale=None
                 o = attn_h128_true_bf16(q_int8, k_int8, v, q_scale, k_scale)
 
 
-    return o
+    if ret_lse:
+        return o, lse
+    else:
+        return o
